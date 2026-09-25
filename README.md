@@ -1,8 +1,13 @@
 # Music Player
 
-<img width="1080" height="2400" alt="Screenshot_2026-09-25-18-55-14-54_04e6797df9ab5245a25ec651125373b0" src="https://github.com/user-attachments/assets/d6920483-e916-4661-b95d-1eef317c7ff4" /><img width="1080" height="2400" alt="Screenshot_2026-09-25-18-55-28-87_04e6797df9ab5245a25ec651125373b0" src="https://github.com/user-attachments/assets/8b95e46f-14a8-4997-a53e-34ff9bf8d356" />
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/d6920483-e916-4661-b95d-1eef317c7ff4" width="260" alt="Music Player screenshot 1" />
+  &nbsp;&nbsp;
+  <img src="https://github.com/user-attachments/assets/8b95e46f-14a8-4997-a53e-34ff9bf8d356" width="260" alt="Music Player screenshot 2" />
+</p>
 
-Disclaimer: the code in its entirety was written by an LLM, use at your own discretion.
+> [!NOTE]
+> The code in its entirety was written by an LLM; use it at your own discretion.
 
 A local-files music player for Android, written in Kotlin with Jetpack Compose and Media3.
 
