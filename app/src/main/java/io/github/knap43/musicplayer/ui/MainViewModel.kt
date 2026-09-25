@@ -8,15 +8,20 @@ import io.github.knap43.musicplayer.MusicApp
 import io.github.knap43.musicplayer.data.AlbumEntity
 import io.github.knap43.musicplayer.data.PlaylistSummary
 import io.github.knap43.musicplayer.data.PlaylistTrack
+import io.github.knap43.musicplayer.data.SearchTrack
 import io.github.knap43.musicplayer.data.TrackEntity
 import io.github.knap43.musicplayer.playback.QueueSource
 import io.github.knap43.musicplayer.tags.Lrc
 import io.github.knap43.musicplayer.tags.Lyrics
+import io.github.knap43.musicplayer.ui.components.normalizeForSearch
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -68,17 +73,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Playback --------------------------------------------------------------------------
 
-    fun playAlbum(album: AlbumEntity, startIndex: Int = 0, shuffle: Boolean = false) {
+    /** Plays an album. Without a [startIndex] it starts at the top, or anywhere if shuffle is on. */
+    fun playAlbum(album: AlbumEntity, startIndex: Int? = null, shuffle: Boolean = false) {
         viewModelScope.launch {
             val tracks = repository.albumTracksOnce(album.id)
-            play(tracks, startIndex, QueueSource(QueueSource.Kind.ALBUM, album.id, album.name), shuffle)
+            play(tracks, startIndex, album.toSource(), shuffle)
         }
     }
 
     fun playAlbumTracks(album: AlbumEntity, tracks: List<TrackEntity>, startIndex: Int) =
-        play(tracks, startIndex, QueueSource(QueueSource.Kind.ALBUM, album.id, album.name), shuffle = false)
+        play(tracks, startIndex, album.toSource(), forceShuffle = false)
 
-    fun playPlaylist(id: Long, name: String, startIndex: Int = 0, shuffle: Boolean = false) {
+    /** Plays a search result: its whole album becomes the queue, starting at that song. */
+    fun playTrackInAlbum(trackId: String, albumId: String) {
+        viewModelScope.launch {
+            val album = repository.albumOnce(albumId) ?: return@launch
+            val tracks = repository.albumTracksOnce(albumId)
+            val index = tracks.indexOfFirst { it.id == trackId }
+            if (index >= 0) play(tracks, index, album.toSource(), forceShuffle = false)
+        }
+    }
+
+    fun playPlaylist(id: Long, name: String, startIndex: Int? = null, shuffle: Boolean = false) {
         viewModelScope.launch {
             val tracks = repository.playlistTracksOnce(id)
             if (tracks.isEmpty()) {
@@ -89,12 +105,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun play(tracks: List<TrackEntity>, startIndex: Int, source: QueueSource, shuffle: Boolean) {
+    fun setShuffle(enabled: Boolean) = player.setShuffle(enabled)
+
+    private fun AlbumEntity.toSource() = QueueSource(QueueSource.Kind.ALBUM, id, name)
+
+    private fun play(tracks: List<TrackEntity>, startIndex: Int?, source: QueueSource, forceShuffle: Boolean) {
         if (tracks.isEmpty()) return
-        val start = if (shuffle) Random.nextInt(tracks.size) else startIndex
-        // The Shuffle buttons force shuffle on; otherwise the player's current shuffle setting is kept.
-        player.play(tracks, start, source, shuffle = shuffle || playerState.value.shuffle)
+        // The "Shuffle" menu actions force shuffle on; otherwise the shuffle toggle decides.
+        val shuffle = forceShuffle || playerState.value.shuffle
+        val start = startIndex ?: if (shuffle) Random.nextInt(tracks.size) else 0
+        player.play(tracks, start, source, shuffle)
     }
+
+    // --- Search ----------------------------------------------------------------------------
+
+    /** A song plus its pre-normalised searchable text, so filtering per keystroke stays cheap. */
+    class IndexedTrack(val track: SearchTrack, val haystack: String)
+
+    val searchIndex: StateFlow<List<IndexedTrack>?> = repository.searchTracks()
+        .map { tracks ->
+            tracks.map { IndexedTrack(it, normalizeForSearch("${it.title} ${it.artist.orEmpty()} ${it.albumTitle}")) }
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     // --- Playlists -------------------------------------------------------------------------
 

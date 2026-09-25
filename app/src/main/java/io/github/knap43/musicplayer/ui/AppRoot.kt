@@ -1,6 +1,15 @@
 package io.github.knap43.musicplayer.ui
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,9 +31,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -79,7 +92,11 @@ fun AppRoot(vm: MainViewModel, openPlayerRequests: Flow<Unit>) {
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             Column {
-                if (playerState.hasMedia && !onPlayerTab && destination != null) {
+                AnimatedVisibility(
+                    visible = playerState.hasMedia && !onPlayerTab && destination != null,
+                    enter = slideInVertically { it } + expandVertically(expandFrom = Alignment.Top),
+                    exit = slideOutVertically { it } + shrinkVertically(shrinkTowards = Alignment.Top),
+                ) {
                     MiniPlayer(playerState, vm.player, onOpen = { nav.openTab(Tab.Player) })
                 }
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
@@ -107,6 +124,10 @@ fun AppRoot(vm: MainViewModel, openPlayerRequests: Flow<Unit>) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
+            enterTransition = { slideIntoContainer(forwardDirection(), SLIDE_SPEC) },
+            exitTransition = { slideOutOfContainer(forwardDirection(), SLIDE_SPEC) },
+            popEnterTransition = { slideIntoContainer(SlideDirection.End, SLIDE_SPEC) },
+            popExitTransition = { slideOutOfContainer(SlideDirection.End, SLIDE_SPEC) },
         ) {
             navigation(route = Tab.Library.route, startDestination = Routes.ALBUMS) {
                 composable(Routes.ALBUMS) {
@@ -138,6 +159,21 @@ fun AppRoot(vm: MainViewModel, openPlayerRequests: Flow<Unit>) {
             onDismiss = vm::dismissAddRequest,
         )
     }
+}
+
+private val SLIDE_SPEC = tween<IntOffset>(durationMillis = 300, easing = FastOutSlowInEasing)
+
+private fun NavDestination.tabIndex(): Int =
+    Tab.entries.indexOfFirst { tab -> hierarchy.any { it.route == tab.route } }
+
+/**
+ * Opening a detail screen slides in from the end. Switching tabs slides towards the tab's
+ * position in the bottom bar, so moving from Library to Player slides left and back again right.
+ */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.forwardDirection(): SlideDirection {
+    val from = initialState.destination.tabIndex()
+    val to = targetState.destination.tabIndex()
+    return if (from != to && to < from) SlideDirection.End else SlideDirection.Start
 }
 
 private fun NavHostController.openTab(tab: Tab) {

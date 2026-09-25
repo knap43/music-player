@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.knap43.musicplayer.data.PlaylistEntity
+import io.github.knap43.musicplayer.data.PlaylistTrack
 import io.github.knap43.musicplayer.playback.QueueSource
 import io.github.knap43.musicplayer.ui.AddRequest
 import io.github.knap43.musicplayer.ui.MainViewModel
@@ -50,6 +51,10 @@ import io.github.knap43.musicplayer.ui.components.EmptyState
 import io.github.knap43.musicplayer.ui.components.LongPressMenuBox
 import io.github.knap43.musicplayer.ui.components.MenuAction
 import io.github.knap43.musicplayer.ui.components.NameDialog
+import io.github.knap43.musicplayer.ui.components.NoResults
+import io.github.knap43.musicplayer.ui.components.fieldsMatch
+import io.github.knap43.musicplayer.ui.components.queryTokens
+import io.github.knap43.musicplayer.ui.components.rememberSearchState
 import io.github.knap43.musicplayer.ui.components.ScreenScaffold
 import io.github.knap43.musicplayer.ui.components.TrackRow
 import io.github.knap43.musicplayer.ui.components.describeLength
@@ -66,6 +71,17 @@ fun PlaylistScreen(vm: MainViewModel, playlistId: Long, onBack: () -> Unit) {
     var menuOpen by remember { mutableStateOf(false) }
     var renaming by rememberSaveable { mutableStateOf(false) }
     var deleting by rememberSaveable { mutableStateOf(false) }
+    val search = rememberSearchState()
+    // Indices always refer to the full playlist, so playback and reordering stay correct.
+    val visible = remember(entries, search.isFiltering, search.query) {
+        val indexed = entries.withIndex().toList()
+        if (!search.isFiltering) {
+            indexed
+        } else {
+            val tokens = queryTokens(search.query)
+            indexed.filter { fieldsMatch(tokens, it.value.track.title, it.value.track.artist, it.value.track.albumTitle) }
+        }
+    }
 
     LaunchedEffect(playlist) { if (playlist == null) onBack() }
     val current = playlist?.takeIf { it !== Loading }
@@ -73,6 +89,8 @@ fun PlaylistScreen(vm: MainViewModel, playlistId: Long, onBack: () -> Unit) {
     ScreenScaffold(
         title = current?.name.orEmpty(),
         onBack = onBack,
+        search = search.takeIf { entries.isNotEmpty() },
+        searchPlaceholder = "Search this playlist",
         actions = {
             Box {
                 IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
@@ -98,34 +116,19 @@ fun PlaylistScreen(vm: MainViewModel, playlistId: Long, onBack: () -> Unit) {
                 .padding(padding)
                 .fillMaxSize(),
         ) {
-            item {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    CoverArt(
-                        entries.firstNotNullOfOrNull { it.track.coverPath },
-                        Modifier.size(180.dp),
-                        cornerRadius = 16.dp,
-                        iconSize = 64.dp,
+            if (!search.isFiltering) {
+                item {
+                    PlaylistHeader(
+                        name = list.name,
+                        entries = entries,
+                        shuffle = playerState.shuffle,
+                        onPlay = { vm.playPlaylist(list.id, list.name) },
+                        onShuffleChange = vm::setShuffle,
                     )
-                    Spacer(Modifier.height(16.dp))
-                    Text(list.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                    Text(
-                        describeLength(entries.size, entries.sumOf { it.track.durationMs }),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (entries.isNotEmpty()) {
-                        Spacer(Modifier.height(16.dp))
-                        PlayButtons(
-                            onPlay = { vm.playPlaylist(list.id, list.name) },
-                            onShuffle = { vm.playPlaylist(list.id, list.name, shuffle = true) },
-                        )
-                    }
                 }
+            }
+            if (search.isFiltering && visible.isEmpty()) {
+                item { NoResults(search.query) }
             }
             if (entries.isEmpty()) {
                 item {
@@ -136,12 +139,13 @@ fun PlaylistScreen(vm: MainViewModel, playlistId: Long, onBack: () -> Unit) {
                     )
                 }
             }
-            itemsIndexed(entries, key = { _, e -> e.entryId }) { index, entry ->
+            items(visible, key = { it.value.entryId }) { (index, entry) ->
                 val track = entry.track
                 val actions = buildList {
                     add(MenuAction("Play", Icons.Filled.PlayArrow) { vm.playPlaylist(list.id, list.name, index) })
-                    if (index > 0) add(MenuAction("Move up", Icons.Filled.ArrowUpward) { vm.movePlaylistEntry(entries, index, -1) })
-                    if (index < entries.lastIndex) add(MenuAction("Move down", Icons.Filled.ArrowDownward) { vm.movePlaylistEntry(entries, index, 1) })
+                    // Reordering a filtered view would swap with hidden neighbours, so only offer it unfiltered.
+                    if (index > 0 && !search.isFiltering) add(MenuAction("Move up", Icons.Filled.ArrowUpward) { vm.movePlaylistEntry(entries, index, -1) })
+                    if (index < entries.lastIndex && !search.isFiltering) add(MenuAction("Move down", Icons.Filled.ArrowDownward) { vm.movePlaylistEntry(entries, index, 1) })
                     add(MenuAction("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) {
                         vm.requestAddToPlaylist(AddRequest.Tracks(listOf(track.id)))
                     })
@@ -185,5 +189,39 @@ fun PlaylistScreen(vm: MainViewModel, playlistId: Long, onBack: () -> Unit) {
             },
             onDismiss = { deleting = false },
         )
+    }
+}
+
+@Composable
+private fun PlaylistHeader(
+    name: String,
+    entries: List<PlaylistTrack>,
+    shuffle: Boolean,
+    onPlay: () -> Unit,
+    onShuffleChange: (Boolean) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        CoverArt(
+            entries.firstNotNullOfOrNull { it.track.coverPath },
+            Modifier.size(180.dp),
+            cornerRadius = 16.dp,
+            iconSize = 64.dp,
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Text(
+            describeLength(entries.size, entries.sumOf { it.track.durationMs }),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (entries.isNotEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            PlayButtons(shuffle = shuffle, onPlay = onPlay, onShuffleChange = onShuffleChange)
+        }
     }
 }

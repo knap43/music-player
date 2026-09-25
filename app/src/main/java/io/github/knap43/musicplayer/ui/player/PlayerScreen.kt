@@ -1,6 +1,9 @@
 package io.github.knap43.musicplayer.ui.player
 
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -51,6 +54,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -116,7 +120,19 @@ fun PlayerScreen(vm: MainViewModel) {
                     .fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                Crossfade(targetState = showLyrics, label = "coverOrLyrics") { lyricsVisible ->
+                AnimatedContent(
+                    targetState = showLyrics,
+                    transitionSpec = {
+                        // Lyrics sit "to the right" of the cover, like a second page.
+                        if (targetState) {
+                            slideInHorizontally { it } togetherWith slideOutHorizontally { -it }
+                        } else {
+                            slideInHorizontally { -it } togetherWith slideOutHorizontally { it }
+                        }
+                    },
+                    modifier = Modifier.clipToBounds(),
+                    label = "coverOrLyrics",
+                ) { lyricsVisible ->
                     val currentLyrics = lyrics
                     if (lyricsVisible && currentLyrics != null) {
                         LyricsView(currentLyrics, position, onSeek = vm.player::seekTo)

@@ -55,6 +55,16 @@ import io.github.knap43.musicplayer.ui.components.EmptyState
 import io.github.knap43.musicplayer.ui.components.LongPressMenuBox
 import io.github.knap43.musicplayer.ui.components.MenuAction
 import io.github.knap43.musicplayer.ui.components.ScreenScaffold
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.material.icons.filled.Album
+import io.github.knap43.musicplayer.data.SearchTrack
+import io.github.knap43.musicplayer.ui.components.NoResults
+import io.github.knap43.musicplayer.ui.components.TrackRow
+import io.github.knap43.musicplayer.ui.components.fieldsMatch
+import io.github.knap43.musicplayer.ui.components.matchesQuery
+import io.github.knap43.musicplayer.ui.components.queryTokens
+import io.github.knap43.musicplayer.ui.components.rememberSearchState
+import kotlinx.coroutines.flow.flowOf
 
 @Composable
 fun LibraryScreen(vm: MainViewModel, onOpenAlbum: (String) -> Unit) {
@@ -66,9 +76,15 @@ fun LibraryScreen(vm: MainViewModel, onOpenAlbum: (String) -> Unit) {
         uri?.let(vm::chooseRootFolder)
     }
     var menuOpen by remember { mutableStateOf(false) }
+    val search = rememberSearchState()
+    // The song index is only built while the search field is open.
+    val searchIndex by remember(search.active) { if (search.active) vm.searchIndex else flowOf(null) }
+        .collectAsStateWithLifecycle(initialValue = null)
 
     ScreenScaffold(
         title = "Library",
+        search = search.takeIf { root != null },
+        searchPlaceholder = "Search albums and songs",
         actions = {
             if (root != null) {
                 IconButton(onClick = vm::rescan, enabled = !scan.running) {
@@ -129,14 +145,30 @@ fun LibraryScreen(vm: MainViewModel, onOpenAlbum: (String) -> Unit) {
                     message = "“${root?.name}” doesn’t contain any MP3, FLAC or WebM files yet.",
                     action = { Button(onClick = { pickFolder.launch(null) }) { Text("Choose another folder") } },
                 )
-                else -> AlbumGrid(
-                    albums = list,
-                    playingAlbumId = playerState.source?.takeIf { it.kind == QueueSource.Kind.ALBUM }?.id,
-                    onOpen = { onOpenAlbum(it.id) },
-                    onPlay = { vm.playAlbum(it) },
-                    onShuffle = { vm.playAlbum(it, shuffle = true) },
-                    onAddToPlaylist = { vm.requestAddToPlaylist(AddRequest.Album(it.id)) },
-                )
+                else -> {
+                    val tokens = remember(search.query) { queryTokens(search.query) }
+                    val filtering = search.isFiltering
+                    val shownAlbums = remember(list, tokens, filtering) {
+                        if (filtering) list.filter { fieldsMatch(tokens, it.name, it.artist, it.path) } else list
+                    }
+                    val songs = remember(searchIndex, tokens, filtering) {
+                        if (filtering) searchIndex.orEmpty().filter { matchesQuery(tokens, it.haystack) }.map { it.track } else emptyList()
+                    }
+                    AlbumGrid(
+                        albums = shownAlbums,
+                        songs = songs,
+                        searchQuery = search.query.takeIf { filtering },
+                        playingAlbumId = playerState.source?.takeIf { it.kind == QueueSource.Kind.ALBUM }?.id,
+                        playingTrackId = playerState.mediaId,
+                        onOpen = { onOpenAlbum(it.id) },
+                        onPlay = { vm.playAlbum(it) },
+                        onShuffle = { vm.playAlbum(it, shuffle = true) },
+                        onAddToPlaylist = { vm.requestAddToPlaylist(AddRequest.Album(it.id)) },
+                        onPlaySong = { vm.playTrackInAlbum(it.id, it.albumId) },
+                        onOpenSongAlbum = { onOpenAlbum(it.albumId) },
+                        onAddSongToPlaylist = { vm.requestAddToPlaylist(AddRequest.Tracks(listOf(it.id))) },
+                    )
+                }
             }
         }
     }
@@ -145,17 +177,30 @@ fun LibraryScreen(vm: MainViewModel, onOpenAlbum: (String) -> Unit) {
 @Composable
 private fun AlbumGrid(
     albums: List<AlbumEntity>,
+    songs: List<SearchTrack>,
+    searchQuery: String?,
     playingAlbumId: String?,
+    playingTrackId: String?,
     onOpen: (AlbumEntity) -> Unit,
     onPlay: (AlbumEntity) -> Unit,
     onShuffle: (AlbumEntity) -> Unit,
     onAddToPlaylist: (AlbumEntity) -> Unit,
+    onPlaySong: (SearchTrack) -> Unit,
+    onOpenSongAlbum: (SearchTrack) -> Unit,
+    onAddSongToPlaylist: (SearchTrack) -> Unit,
 ) {
+    val searching = searchQuery != null
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 150.dp),
         contentPadding = PaddingValues(12.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
+        if (searching && albums.isEmpty() && songs.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) { NoResults(searchQuery.orEmpty()) }
+        }
+        if (searching && albums.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("Albums", albums.size) }
+        }
         items(albums, key = { it.id }) { album ->
             LongPressMenuBox(
                 onClick = { onOpen(album) },
@@ -169,7 +214,39 @@ private fun AlbumGrid(
                 AlbumCard(album, isPlaying = album.id == playingAlbumId)
             }
         }
+        if (songs.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("Songs", songs.size) }
+            items(songs, key = { "song:" + it.id }, span = { GridItemSpan(maxLineSpan) }) { song ->
+                LongPressMenuBox(
+                    onClick = { onPlaySong(song) },
+                    actions = listOf(
+                        MenuAction("Play", Icons.Filled.PlayArrow) { onPlaySong(song) },
+                        MenuAction("Go to album", Icons.Filled.Album) { onOpenSongAlbum(song) },
+                        MenuAction("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) { onAddSongToPlaylist(song) },
+                    ),
+                ) {
+                    TrackRow(
+                        title = song.title,
+                        subtitle = listOfNotNull(song.artist, song.albumTitle).joinToString(" · "),
+                        durationMs = song.durationMs,
+                        isCurrent = song.id == playingTrackId,
+                        leading = { CoverArt(song.coverPath, Modifier.size(44.dp), cornerRadius = 6.dp, iconSize = 18.dp) },
+                    )
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun SectionHeader(title: String, count: Int) {
+    Text(
+        "$title · $count",
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+    )
 }
 
 @Composable

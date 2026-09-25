@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -43,6 +44,10 @@ import io.github.knap43.musicplayer.ui.components.EmptyState
 import io.github.knap43.musicplayer.ui.components.LongPressMenuBox
 import io.github.knap43.musicplayer.ui.components.MenuAction
 import io.github.knap43.musicplayer.ui.components.NameDialog
+import io.github.knap43.musicplayer.ui.components.NoResults
+import io.github.knap43.musicplayer.ui.components.fieldsMatch
+import io.github.knap43.musicplayer.ui.components.queryTokens
+import io.github.knap43.musicplayer.ui.components.rememberSearchState
 import io.github.knap43.musicplayer.ui.components.ScreenScaffold
 
 @Composable
@@ -52,9 +57,12 @@ fun PlaylistsScreen(vm: MainViewModel, onOpenPlaylist: (Long) -> Unit) {
     var creating by rememberSaveable { mutableStateOf(false) }
     var renaming by rememberSaveable { mutableStateOf<Long?>(null) }
     var deleting by rememberSaveable { mutableStateOf<Long?>(null) }
+    val search = rememberSearchState()
 
     ScreenScaffold(
         title = "Playlists",
+        search = search.takeIf { !playlists.isNullOrEmpty() },
+        searchPlaceholder = "Search playlists",
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { creating = true },
@@ -76,13 +84,25 @@ fun PlaylistsScreen(vm: MainViewModel, onOpenPlaylist: (Long) -> Unit) {
             return@ScreenScaffold
         }
         val playingId = playerState.source?.takeIf { it.kind == QueueSource.Kind.PLAYLIST }?.id
+        val shown = remember(list, search.isFiltering, search.query) {
+            if (search.isFiltering) {
+                val tokens = queryTokens(search.query)
+                list.filter { fieldsMatch(tokens, it.name) }
+            } else {
+                list
+            }
+        }
+        if (shown.isEmpty()) {
+            NoResults(search.query, Modifier.padding(padding))
+            return@ScreenScaffold
+        }
         LazyColumn(
             Modifier
                 .padding(padding)
                 .fillMaxSize(),
             contentPadding = PaddingValues(bottom = 88.dp),
         ) {
-            items(list, key = { it.id }) { playlist ->
+            items(shown, key = { it.id }) { playlist ->
                 LongPressMenuBox(
                     onClick = { onOpenPlaylist(playlist.id) },
                     actions = listOf(

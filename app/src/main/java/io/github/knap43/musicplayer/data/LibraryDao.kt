@@ -20,6 +20,12 @@ abstract class LibraryDao {
     @Query("SELECT * FROM albums WHERE id = :id")
     abstract fun album(id: String): Flow<AlbumEntity?>
 
+    @Query("SELECT * FROM albums WHERE id = :id")
+    abstract suspend fun albumOnce(id: String): AlbumEntity?
+
+    @Query("SELECT id, albumId, title, artist, albumTitle, coverPath, durationMs FROM tracks ORDER BY title COLLATE NOCASE")
+    abstract fun searchTracks(): Flow<List<SearchTrack>>
+
     @Query("SELECT * FROM tracks WHERE albumId = :albumId ORDER BY $TRACK_ORDER")
     abstract fun albumTracks(albumId: String): Flow<List<TrackEntity>>
 

@@ -85,6 +85,17 @@ data class TrackSummary(
     val coverPath: String?,
 )
 
+/** Lightweight view of a track for library-wide search. */
+data class SearchTrack(
+    val id: String,
+    val albumId: String,
+    val title: String,
+    val artist: String?,
+    val albumTitle: String,
+    val coverPath: String?,
+    val durationMs: Long,
+)
+
 data class PlaylistSummary(
     val id: Long,
     val name: String,

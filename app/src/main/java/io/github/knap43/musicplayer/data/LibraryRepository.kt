@@ -45,6 +45,9 @@ class LibraryRepository(
     fun playlist(id: Long): Flow<PlaylistEntity?> = dao.playlist(id)
     fun playlistTracks(id: Long): Flow<List<PlaylistTrack>> = dao.playlistTracks(id)
 
+    fun searchTracks(): Flow<List<SearchTrack>> = dao.searchTracks()
+
+    suspend fun albumOnce(id: String) = dao.albumOnce(id)
     suspend fun albumTracksOnce(id: String) = dao.albumTracksOnce(id)
     suspend fun playlistTracksOnce(id: Long) = dao.playlistTracksOnce(id)
     suspend fun lyrics(trackId: String): String? = dao.lyrics(trackId)

@@ -128,6 +128,7 @@ class PlayerConnection(private val context: Context) {
     fun previous() = withController { it.seekToPrevious() }
     fun seekTo(positionMs: Long) = withController { it.seekTo(positionMs) }
     fun toggleShuffle() = withController { it.shuffleModeEnabled = !it.shuffleModeEnabled }
+    fun setShuffle(enabled: Boolean) = withController { it.shuffleModeEnabled = enabled }
 
     fun cycleRepeatMode() = withController {
         it.repeatMode = when (it.repeatMode) {

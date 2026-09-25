@@ -1,12 +1,19 @@
 package io.github.knap43.musicplayer.ui.components
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,8 +25,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -124,34 +135,90 @@ fun LongPressMenuBox(
     }
 }
 
-/** A screen-level scaffold whose bottom insets are handled by the app's bottom bar. */
+/**
+ * A screen-level scaffold whose bottom insets are handled by the app's bottom bar. Passing a
+ * [search] state adds a search button that turns the title into a search field.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScreenScaffold(
     title: String,
     onBack: (() -> Unit)? = null,
-    actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
+    search: SearchState? = null,
+    searchPlaceholder: String = "Search",
+    actions: @Composable RowScope.() -> Unit = {},
     floatingActionButton: @Composable () -> Unit = {},
-    content: @Composable (androidx.compose.foundation.layout.PaddingValues) -> Unit,
+    content: @Composable (PaddingValues) -> Unit,
 ) {
+    val searching = search?.active == true
+    BackHandler(enabled = searching) { search?.close() }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) },
+                title = {
+                    AnimatedContent(
+                        targetState = searching,
+                        transitionSpec = {
+                            // The search field slides in from the end and back out the same way.
+                            if (targetState) {
+                                slideInHorizontally { it } togetherWith slideOutHorizontally { -it }
+                            } else {
+                                slideInHorizontally { -it } togetherWith slideOutHorizontally { it }
+                            }
+                        },
+                        modifier = Modifier.clipToBounds(),
+                        label = "titleOrSearch",
+                    ) { showSearch ->
+                        if (showSearch && search != null) {
+                            SearchField(search, searchPlaceholder)
+                        } else {
+                            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                },
                 navigationIcon = {
-                    if (onBack != null) {
-                        IconButton(onClick = onBack) {
+                    when {
+                        searching -> IconButton(onClick = { search?.close() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close search")
+                        }
+                        onBack != null -> IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     }
                 },
-                actions = actions,
+                actions = {
+                    if (search != null && searching) {
+                        if (search.query.isNotEmpty()) {
+                            IconButton(onClick = { search.query = "" }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    } else {
+                        if (search != null) {
+                            IconButton(onClick = search::open) {
+                                Icon(Icons.Filled.Search, contentDescription = "Search")
+                            }
+                        }
+                        actions()
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
         floatingActionButton = floatingActionButton,
         content = content,
+    )
+}
+
+/** Shown in place of a list when a search matches nothing. */
+@Composable
+fun NoResults(query: String, modifier: Modifier = Modifier) {
+    EmptyState(
+        icon = Icons.Filled.SearchOff,
+        title = "No results",
+        message = "Nothing matches “${query.trim()}”.",
+        modifier = modifier,
     )
 }
 
