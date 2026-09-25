@@ -11,7 +11,10 @@ A local-files music player for Android, written in Kotlin with Jetpack Compose a
 - **Album covers** taken from the art embedded in the tracks (ID3 `APIC`, FLAC `PICTURE`,
   Matroska attachments), falling back to a `cover.jpg` / `folder.jpg` / `front.jpg` in the folder.
 - **Three tabs** along the bottom: **Library**, **Playlists** and **Player**, plus a mini-player
-  above the tab bar while something is playing.
+  above the tab bar while something is playing. Swipe left or right anywhere to move between
+  the tabs; each tab remembers the album or playlist you had open.
+- **Search** in the library (albums and songs), inside an album, and in and across playlists.
+  Matching ignores case and accents.
 - **Playlists**: create as many as you like. Long-press a song or an album anywhere in the library
   and choose *Add to playlist…*. Inside a playlist, long-press a song to move it up or down or
   remove it.

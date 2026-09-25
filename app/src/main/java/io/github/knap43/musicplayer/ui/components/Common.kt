@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -136,6 +137,12 @@ fun LongPressMenuBox(
 }
 
 /**
+ * False for tabs that are composed but scrolled off screen, so they don't react to the back
+ * gesture meant for the visible tab.
+ */
+val LocalIsCurrentPage = compositionLocalOf { true }
+
+/**
  * A screen-level scaffold whose bottom insets are handled by the app's bottom bar. Passing a
  * [search] state adds a search button that turns the title into a search field.
  */
@@ -151,7 +158,7 @@ fun ScreenScaffold(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val searching = search?.active == true
-    BackHandler(enabled = searching) { search?.close() }
+    BackHandler(enabled = searching && LocalIsCurrentPage.current) { search?.close() }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
