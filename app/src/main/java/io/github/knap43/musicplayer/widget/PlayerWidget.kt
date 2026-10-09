@@ -115,8 +115,8 @@ class PlayerWidget : AppWidgetProvider() {
 
         private const val COMMAND_TIMEOUT_MS = 9_000L
         private const val QUEUE_WAIT_MS = 3_000L
-        private const val COVER_SIZE_DP = 110
-        private const val LARGE_MIN_HEIGHT_DP = 110
+        private const val COVER_SIZE_DP = 96
+        private const val LARGE_MIN_HEIGHT_DP = 100
 
         private val commandScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -277,10 +277,7 @@ class PlayerWidget : AppWidgetProvider() {
             return bitmap
         }
 
-        /**
-         * Decodes [path] and centre-crops it to a [size]-pixel square. From Android 12 the widget
-         * clips the cover to its own rounded outline; before that, the left corners are rounded here.
-         */
+        /** Decodes [path], centre-crops it to a [size]-pixel square and rounds the corners. */
         private fun decodeRounded(path: String, size: Int): Bitmap? {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(path, bounds)
@@ -296,12 +293,9 @@ class PlayerWidget : AppWidgetProvider() {
             val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(output)
             val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                // Round the left corners only; the right edge meets the text panel.
-                val radius = size * 0.18f
-                canvas.drawRoundRect(RectF(0f, 0f, size + radius, size.toFloat()), radius, radius, paint)
-                paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
-            }
+            val radius = size * 0.1f
+            canvas.drawRoundRect(RectF(0f, 0f, size.toFloat(), size.toFloat()), radius, radius, paint)
+            paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             canvas.drawBitmap(source, Rect(left, top, left + side, top + side), Rect(0, 0, size, size), paint)
             source.recycle()
             return output
