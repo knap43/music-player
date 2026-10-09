@@ -17,6 +17,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import io.github.knap43.musicplayer.MusicApp
 import io.github.knap43.musicplayer.R
 import io.github.knap43.musicplayer.ui.MainActivity
+import io.github.knap43.musicplayer.widget.PlayerWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -33,6 +34,9 @@ class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var positionSaver: Job? = null
+
+    /** False until the saved queue has been read back; until then an empty player means nothing. */
+    private var restored = false
     private val app get() = application as MusicApp
 
     override fun onCreate() {
@@ -49,6 +53,7 @@ class PlaybackService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
         player.addListener(QueueSaver())
+        player.addListener(WidgetUpdater())
 
         val openPlayer = PendingIntent.getActivity(
             this,
@@ -82,6 +87,10 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         session?.let {
             saveQueue(it.player, sync = true)
+            when {
+                it.player.mediaItemCount > 0 -> PlayerWidget.publish(this, PlayerWidget.State.of(it.player).copy(playing = false))
+                restored -> PlayerWidget.publish(this, PlayerWidget.State())
+            }
             it.player.release()
             it.release()
         }
@@ -94,13 +103,17 @@ class PlaybackService : MediaSessionService() {
 
     private fun restoreQueue(player: Player) {
         scope.launch {
-            val saved = app.queueStore.load() ?: return@launch
-            val items = loadItems(saved) ?: return@launch
-            // The UI may already have started something while we were reading from disk.
-            if (player.mediaItemCount > 0) return@launch
-            player.setMediaItems(items.items, items.index, items.position)
-            player.shuffleModeEnabled = saved.shuffle
-            player.repeatMode = saved.repeatMode
+            try {
+                val saved = app.queueStore.load() ?: return@launch
+                val items = loadItems(saved) ?: return@launch
+                // The UI may already have started something while we were reading from disk.
+                if (player.mediaItemCount > 0) return@launch
+                player.setMediaItems(items.items, items.index, items.position)
+                player.shuffleModeEnabled = saved.shuffle
+                player.repeatMode = saved.repeatMode
+            } finally {
+                restored = true
+            }
         }
     }
 
@@ -119,6 +132,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun saveQueue(player: Player, sync: Boolean = false) {
+        // Don't wipe the saved queue if the service is stopped before it has been read back.
+        if (!restored && player.mediaItemCount == 0) return
         val current = player.currentMediaItem
         val source = QueueSource.fromBundle(current?.mediaMetadata?.extras)
         val snapshot = if (current == null || source == null) {
@@ -159,6 +174,22 @@ class PlaybackService : MediaSessionService() {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    private inner class WidgetUpdater : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (events.containsAny(
+                    Player.EVENT_TIMELINE_CHANGED,
+                    Player.EVENT_MEDIA_ITEM_TRANSITION,
+                    Player.EVENT_MEDIA_METADATA_CHANGED,
+                    Player.EVENT_PLAY_WHEN_READY_CHANGED,
+                    Player.EVENT_PLAYBACK_STATE_CHANGED,
+                    Player.EVENT_PLAYBACK_SUPPRESSION_REASON_CHANGED,
+                )
+            ) {
+                PlayerWidget.publish(this@PlaybackService, PlayerWidget.State.of(player))
             }
         }
     }

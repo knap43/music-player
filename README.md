@@ -33,6 +33,9 @@ A local-files music player for Android, written in Kotlin with Jetpack Compose a
   the current line; tap a line to jump to it. Lyrics are read from, in order of preference:
   a sidecar `.lrc` file with the same name as the track, ID3 `SYLT`/`USLT`, or a
   `LYRICS`/`UNSYNCEDLYRICS` tag (FLAC and WebM).
+- **Home-screen widget** with the cover, the current song and previous / play-pause / next
+  buttons. It comes in a compact one-row layout and a taller one with a bigger cover (resize it
+  to switch), and it keeps showing the last song after playback stops: tap play to resume.
 - Background playback with a media notification, lock-screen and headset controls, and the queue
   is remembered across restarts.
 
