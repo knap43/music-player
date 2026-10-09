@@ -1,14 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Square, so an ImageView with adjustViewBounds keeps it as wide as it is tall. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
             <solid android:color="#FF2E2E31" />
-            <corners android:radius="@dimen/widget_inner_radius" />
+            <size
+                android:width="96dp"
+                android:height="96dp" />
         </shape>
     </item>
     <item
-        android:width="24dp"
-        android:height="24dp"
+        android:width="28dp"
+        android:height="28dp"
         android:drawable="@drawable/ic_widget_note"
         android:gravity="center" />
 </layer-list>
