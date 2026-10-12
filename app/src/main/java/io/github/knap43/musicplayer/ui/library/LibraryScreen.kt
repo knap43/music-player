@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MoreVert
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -75,6 +77,7 @@ fun LibraryScreen(vm: MainViewModel, onOpenAlbum: (String) -> Unit) {
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         uri?.let(vm::chooseRootFolder)
     }
+    val playerTabInMiddle by vm.playerTabInMiddle.collectAsStateWithLifecycle()
     var menuOpen by remember { mutableStateOf(false) }
     val search = rememberSearchState()
     // The song index is only built while the search field is open.
@@ -102,6 +105,14 @@ fun LibraryScreen(vm: MainViewModel, onOpenAlbum: (String) -> Unit) {
                                 menuOpen = false
                                 pickFolder.launch(null)
                             },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Player tab in the middle") },
+                            leadingIcon = { Icon(Icons.Filled.PlayCircle, contentDescription = null) },
+                            trailingIcon = {
+                                Checkbox(checked = playerTabInMiddle, onCheckedChange = null)
+                            },
+                            onClick = { vm.setPlayerTabInMiddle(!playerTabInMiddle) },
                         )
                     }
                 }

@@ -14,7 +14,8 @@ class MusicApp : Application() {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val database by lazy { AppDatabase.create(this) }
-    val repository by lazy { LibraryRepository(this, database.dao(), Settings(this), scope) }
+    val settings by lazy { Settings(this) }
+    val repository by lazy { LibraryRepository(this, database.dao(), settings, scope) }
     val queueStore by lazy { QueueStore(this) }
     val player by lazy { PlayerConnection(this) }
 }

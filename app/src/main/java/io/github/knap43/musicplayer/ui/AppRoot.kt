@@ -69,7 +69,12 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AppRoot(vm: MainViewModel, openPlayerRequests: Flow<Unit>) {
-    val pager = rememberPagerState { Tab.entries.size }
+    val playerTabInMiddle by vm.playerTabInMiddle.collectAsStateWithLifecycle()
+    val tabs = remember(playerTabInMiddle) {
+        if (playerTabInMiddle) listOf(Tab.Library, Tab.Player, Tab.Playlists)
+        else listOf(Tab.Library, Tab.Playlists, Tab.Player)
+    }
+    val pager = rememberPagerState { tabs.size }
     val scope = rememberCoroutineScope()
     val playerState by vm.playerState.collectAsStateWithLifecycle()
     val addRequest by vm.addRequest.collectAsStateWithLifecycle()
@@ -80,14 +85,22 @@ fun AppRoot(vm: MainViewModel, openPlayerRequests: Flow<Unit>) {
     var openPlaylistId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     fun showTab(tab: Tab) {
-        scope.launch { pager.animateScrollToPage(tab.ordinal) }
+        scope.launch { pager.animateScrollToPage(tabs.indexOf(tab)) }
     }
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
     LaunchedEffect(openPlayerRequests) { openPlayerRequests.collect { showTab(Tab.Player) } }
 
     // Back closes the open album/playlist of the visible tab first, then returns to the Library.
-    val currentTab = Tab.entries[pager.currentPage]
+    val currentTab = tabs[pager.currentPage]
+
+    // When the order changes, stay on the tab that was showing rather than the page index.
+    var lastTab by remember { mutableStateOf(currentTab) }
+    LaunchedEffect(tabs) {
+        val index = tabs.indexOf(lastTab)
+        if (pager.currentPage != index) pager.scrollToPage(index)
+    }
+    LaunchedEffect(currentTab) { lastTab = currentTab }
     BackHandler(enabled = currentTab == Tab.Library && openAlbumId != null) { openAlbumId = null }
     BackHandler(enabled = currentTab == Tab.Playlists && openPlaylistId != null) { openPlaylistId = null }
     BackHandler(
@@ -108,7 +121,7 @@ fun AppRoot(vm: MainViewModel, openPlayerRequests: Flow<Unit>) {
                     MiniPlayer(playerState, vm.player, onOpen = { showTab(Tab.Player) })
                 }
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
-                    Tab.entries.forEach { tab ->
+                    tabs.forEach { tab ->
                         NavigationBarItem(
                             selected = tab == currentTab,
                             onClick = {
@@ -139,14 +152,14 @@ fun AppRoot(vm: MainViewModel, openPlayerRequests: Flow<Unit>) {
         HorizontalPager(
             state = pager,
             // Keep every tab composed so each one's scroll position and search stay put.
-            beyondViewportPageCount = Tab.entries.size - 1,
-            key = { Tab.entries[it].name },
+            beyondViewportPageCount = tabs.size - 1,
+            key = { tabs[it].name },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
         ) { page ->
             CompositionLocalProvider(LocalIsCurrentPage provides (page == pager.currentPage)) {
-                when (Tab.entries[page]) {
+                when (tabs[page]) {
                     Tab.Library -> DetailStack(
                         detail = openAlbumId,
                         root = { LibraryScreen(vm, onOpenAlbum = { openAlbumId = it }) },

@@ -41,6 +41,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val rootFolder = repository.rootFolder
     val scanState = repository.scanState
     val playerState = player.state
+    val playerTabInMiddle = app.settings.playerTabInMiddle
+
+    fun setPlayerTabInMiddle(value: Boolean) = app.settings.setPlayerTabInMiddle(value)
 
     /** `null` until the database has answered, so the UI can avoid flashing an empty state. */
     val albums: StateFlow<List<AlbumEntity>?> =
