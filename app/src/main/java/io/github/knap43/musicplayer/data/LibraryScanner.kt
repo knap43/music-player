@@ -50,7 +50,12 @@ class LibraryScanner(private val context: Context, private val dao: LibraryDao) 
 
     class Result(val trackCount: Int, val albumCount: Int)
 
-    suspend fun scan(treeUri: Uri, rootName: String, onProgress: (Int) -> Unit): Result = withContext(Dispatchers.IO) {
+    suspend fun scan(
+        treeUri: Uri,
+        rootName: String,
+        reparseAll: Boolean = false,
+        onProgress: (Int) -> Unit,
+    ): Result = withContext(Dispatchers.IO) {
         coversDir.mkdirs()
         val stamps = dao.trackStamps().associateBy { it.id }
         val seen = HashSet<String>()
@@ -84,7 +89,7 @@ class LibraryScanner(private val context: Context, private val dao: LibraryDao) 
                         val uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, doc.documentId).toString()
                         val lrc = lyricFiles[doc.baseName.lowercase()]
                         val old = stamps[uri]
-                        val upToDate = old != null && old.lastModified == doc.lastModified &&
+                        val upToDate = !reparseAll && old != null && old.lastModified == doc.lastModified &&
                             old.size == doc.size && old.lyricsStamp == (lrc?.lastModified ?: 0L)
                         val entity = if (upToDate) null else readTrack(uri, doc, dir, lrc, treeUri)
                         onProgress(processed.incrementAndGet())
@@ -138,14 +143,7 @@ class LibraryScanner(private val context: Context, private val dao: LibraryDao) 
         if (tags.durationMs == null) tags.durationMs = retrieverDuration(documentUri)
         val sidecarLyrics = lrc?.let { readText(DocumentsContract.buildDocumentUriUsingTree(treeUri, it.documentId)) }
 
-        var title = tags.title
-        var trackNumber = tags.trackNumber
-        if (title == null) {
-            // "03 - Name.mp3" / "03. Name.flac" -> track 3, "Name"
-            val match = FILE_NUMBER.matchEntire(doc.baseName)
-            title = match?.groupValues?.get(2) ?: doc.baseName
-            if (trackNumber == null) trackNumber = match?.groupValues?.get(1)?.toIntOrNull()
-        }
+        val (title, trackNumber) = trackTitleAndNumber(tags.title, tags.trackNumber, doc.baseName)
 
         return TrackEntity(
             id = uri,
@@ -279,10 +277,12 @@ class LibraryScanner(private val context: Context, private val dao: LibraryDao) 
     private fun sha1(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-1").digest(bytes).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
 
-    private companion object {
-        const val MAX_COVER_SIZE = 1024
-        val FILE_NUMBER = Regex("""^(\d{1,3})\s*[.\-_)]\s*(.+)$""")
-        val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp")
-        val COVER_NAMES = listOf("cover", "folder", "front", "album")
+    companion object {
+        /** Bump when reading changes in a way that should refresh tracks already in the library. */
+        const val PARSER_VERSION = 1
+
+        private const val MAX_COVER_SIZE = 1024
+        private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp")
+        private val COVER_NAMES = listOf("cover", "folder", "front", "album")
     }
 }

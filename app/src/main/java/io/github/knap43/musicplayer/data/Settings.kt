@@ -28,6 +28,11 @@ class Settings(context: Context) {
             }
         }
 
+    /** The [LibraryScanner.PARSER_VERSION] the stored library was last fully read with. */
+    var parserVersion: Int
+        get() = prefs.getInt(KEY_PARSER_VERSION, 0)
+        set(value) = prefs.edit { putInt(KEY_PARSER_VERSION, value) }
+
     private val _playerTabInMiddle = MutableStateFlow(prefs.getBoolean(KEY_PLAYER_TAB_MIDDLE, true))
 
     /** Whether the Player tab sits between Library and Playlists rather than at the end. */
@@ -42,5 +47,6 @@ class Settings(context: Context) {
         const val KEY_ROOT_URI = "root_uri"
         const val KEY_ROOT_NAME = "root_name"
         const val KEY_PLAYER_TAB_MIDDLE = "player_tab_middle"
+        const val KEY_PARSER_VERSION = "parser_version"
     }
 }

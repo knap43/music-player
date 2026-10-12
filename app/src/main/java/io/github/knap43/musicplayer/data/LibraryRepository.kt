@@ -90,9 +90,12 @@ class LibraryRepository(
                 if (!hasAccess(root.uri)) {
                     "The music folder is no longer accessible. Please choose it again."
                 } else {
-                    scanner.scan(root.uri, root.name) { count ->
+                    // Re-read every file once after the way titles and numbers are derived changes.
+                    val reparseAll = settings.parserVersion < LibraryScanner.PARSER_VERSION
+                    scanner.scan(root.uri, root.name, reparseAll) { count ->
                         _scanState.update { it.copy(processedFiles = count) }
                     }
+                    if (reparseAll) settings.parserVersion = LibraryScanner.PARSER_VERSION
                     null
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {

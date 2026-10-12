@@ -8,7 +8,7 @@ import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 private const val TRACK_ORDER =
-    "COALESCE(discNumber, 1), trackNumber IS NULL, trackNumber, fileName COLLATE NOCASE"
+    "COALESCE(discNumber, 1), trackNumber IS NULL, trackNumber, title COLLATE NOCASE, fileName COLLATE NOCASE"
 
 @Dao
 abstract class LibraryDao {
