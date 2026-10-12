@@ -14,8 +14,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
@@ -174,8 +172,6 @@ fun PlaylistScreen(vm: MainViewModel, playlistId: Long, onBack: () -> Unit) {
                             if (moved != null) commit(moved) else vm.playNext(track, source)
                         })
                     }
-                    if (index > 0 && canReorder) add(MenuAction("Move up", Icons.Filled.ArrowUpward) { commit(local.moved(index, index - 1)) })
-                    if (index < local.lastIndex && canReorder) add(MenuAction("Move down", Icons.Filled.ArrowDownward) { commit(local.moved(index, index + 1)) })
                     add(MenuAction("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) {
                         vm.requestAddToPlaylist(AddRequest.Tracks(listOf(track.id)))
                     })
