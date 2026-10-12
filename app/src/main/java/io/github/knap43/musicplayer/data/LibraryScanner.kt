@@ -279,7 +279,7 @@ class LibraryScanner(private val context: Context, private val dao: LibraryDao) 
 
     companion object {
         /** Bump when reading changes in a way that should refresh tracks already in the library. */
-        const val PARSER_VERSION = 1
+        const val PARSER_VERSION = 2
 
         private const val MAX_COVER_SIZE = 1024
         private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp")

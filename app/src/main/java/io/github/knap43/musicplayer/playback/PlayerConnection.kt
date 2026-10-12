@@ -114,6 +114,39 @@ class PlayerConnection(private val context: Context) {
         }
     }
 
+    /**
+     * Rearranges the queue so the items that came from [source] follow [orderedIds]. Does
+     * nothing unless the queue holds exactly those tracks from that source.
+     */
+    fun reorderQueue(source: QueueSource, orderedIds: List<String>) = withController { c ->
+        val ids = MutableList(c.mediaItemCount) { c.getMediaItemAt(it).mediaId }
+        val slots = ids.indices.filter { i ->
+            QueueSource.fromBundle(c.getMediaItemAt(i).mediaMetadata.extras)
+                ?.let { it.kind == source.kind && it.id == source.id } == true
+        }
+        if (slots.size != orderedIds.size || slots.map { ids[it] }.toSet() != orderedIds.toSet()) return@withController
+        val desired = ids.toMutableList()
+        slots.forEachIndexed { k, i -> desired[i] = orderedIds[k] }
+        for (i in desired.indices) {
+            if (ids[i] == desired[i]) continue
+            val j = (i + 1 until ids.size).first { ids[it] == desired[i] }
+            c.moveMediaItem(j, i)
+            ids.add(i, ids.removeAt(j))
+        }
+    }
+
+    /** Queues [track] right after the one playing, or plays it if nothing is loaded. */
+    fun playNext(track: TrackEntity, source: QueueSource) = withController { c ->
+        val item = track.toMediaItem(source)
+        if (c.mediaItemCount == 0) {
+            c.setMediaItem(item)
+            c.prepare()
+            c.play()
+        } else {
+            c.addMediaItem(c.currentMediaItemIndex + 1, item)
+        }
+    }
+
     fun togglePlayPause() = withController { c ->
         if (c.isPlaying) {
             c.pause()

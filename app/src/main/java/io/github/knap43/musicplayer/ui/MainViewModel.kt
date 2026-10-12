@@ -84,8 +84,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun playAlbumTracks(album: AlbumEntity, tracks: List<TrackEntity>, startIndex: Int) =
+    fun playAlbumTracks(album: AlbumEntity, tracks: List<TrackEntity>, startIndex: Int? = null) =
         play(tracks, startIndex, album.toSource(), forceShuffle = false)
+
+    fun albumSource(album: AlbumEntity) = album.toSource()
+    fun playlistSource(id: Long, name: String) = QueueSource(QueueSource.Kind.PLAYLIST, id.toString(), name)
+
+    fun isPlayingFrom(source: QueueSource) =
+        playerState.value.source?.let { it.kind == source.kind && it.id == source.id } == true
+
+    /** Queues [track] to play after the current one (used when its list isn't the one playing). */
+    fun playNext(track: TrackEntity, source: QueueSource) = player.playNext(track, source)
+
+    /** Lets the queue follow a list that was reordered while it is playing. */
+    fun followOrder(source: QueueSource, orderedIds: List<String>) {
+        if (isPlayingFrom(source)) player.reorderQueue(source, orderedIds)
+    }
 
     /** Plays a search result: its whole album becomes the queue, starting at that song. */
     fun playTrackInAlbum(trackId: String, albumId: String) {
@@ -188,9 +202,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.removeFromPlaylist(entry.entryId) }
     }
 
-    fun movePlaylistEntry(entries: List<PlaylistTrack>, index: Int, delta: Int) {
-        val target = index + delta
-        if (index !in entries.indices || target !in entries.indices) return
-        viewModelScope.launch { repository.swapPlaylistEntries(entries[index], entries[target]) }
+    /** Saves a playlist's new order, and the queue follows it if the playlist is playing. */
+    fun setPlaylistOrder(id: Long, name: String, entries: List<PlaylistTrack>) {
+        followOrder(playlistSource(id, name), entries.map { it.track.id })
+        viewModelScope.launch { repository.setPlaylistOrder(entries.map { it.entryId }) }
     }
 }

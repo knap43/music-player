@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -47,18 +49,24 @@ import io.github.knap43.musicplayer.ui.AddRequest
 import io.github.knap43.musicplayer.ui.MainViewModel
 import io.github.knap43.musicplayer.ui.components.ConfirmDialog
 import io.github.knap43.musicplayer.ui.components.CoverArt
+import io.github.knap43.musicplayer.ui.components.DragHandle
+import io.github.knap43.musicplayer.ui.components.DragSurface
 import io.github.knap43.musicplayer.ui.components.EmptyState
 import io.github.knap43.musicplayer.ui.components.LongPressMenuBox
 import io.github.knap43.musicplayer.ui.components.MenuAction
 import io.github.knap43.musicplayer.ui.components.NameDialog
 import io.github.knap43.musicplayer.ui.components.NoResults
 import io.github.knap43.musicplayer.ui.components.fieldsMatch
+import io.github.knap43.musicplayer.ui.components.moved
+import io.github.knap43.musicplayer.ui.components.movedAfterCurrent
 import io.github.knap43.musicplayer.ui.components.queryTokens
 import io.github.knap43.musicplayer.ui.components.rememberSearchState
 import io.github.knap43.musicplayer.ui.components.ScreenScaffold
 import io.github.knap43.musicplayer.ui.components.TrackRow
 import io.github.knap43.musicplayer.ui.components.describeLength
 import io.github.knap43.musicplayer.ui.library.PlayButtons
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 /** Sentinel so we can tell "still loading" apart from "deleted". */
 private val Loading = PlaylistEntity(id = -1, name = "", createdAt = 0)
@@ -72,9 +80,11 @@ fun PlaylistScreen(vm: MainViewModel, playlistId: Long, onBack: () -> Unit) {
     var renaming by rememberSaveable { mutableStateOf(false) }
     var deleting by rememberSaveable { mutableStateOf(false) }
     val search = rememberSearchState()
+    // The order shown; it runs ahead of the database while a row is being dragged.
+    var local by remember(entries) { mutableStateOf(entries) }
     // Indices always refer to the full playlist, so playback and reordering stay correct.
-    val visible = remember(entries, search.isFiltering, search.query) {
-        val indexed = entries.withIndex().toList()
+    val visible = remember(local, search.isFiltering, search.query) {
+        val indexed = local.withIndex().toList()
         if (!search.isFiltering) {
             indexed
         } else {
@@ -111,13 +121,25 @@ fun PlaylistScreen(vm: MainViewModel, playlistId: Long, onBack: () -> Unit) {
     ) { padding ->
         val list = current ?: return@ScreenScaffold
         val isActiveSource = playerState.source?.let { it.kind == QueueSource.Kind.PLAYLIST && it.id == playlistId.toString() } == true
+        val source = vm.playlistSource(list.id, list.name)
+        fun commit(order: List<PlaylistTrack>) {
+            local = order
+            vm.setPlaylistOrder(list.id, list.name, order)
+        }
+        val listState = rememberLazyListState()
+        val reorder = rememberReorderableLazyListState(listState) { from, to ->
+            val f = local.indexOfFirst { it.entryId == from.key }
+            val t = local.indexOfFirst { it.entryId == to.key }
+            if (f >= 0 && t >= 0) local = local.toMutableList().apply { add(t, removeAt(f)) }
+        }
         LazyColumn(
             Modifier
                 .padding(padding)
                 .fillMaxSize(),
+            state = listState,
         ) {
             if (!search.isFiltering) {
-                item {
+                item(key = "header") {
                     PlaylistHeader(
                         name = list.name,
                         entries = entries,
@@ -141,27 +163,44 @@ fun PlaylistScreen(vm: MainViewModel, playlistId: Long, onBack: () -> Unit) {
             }
             items(visible, key = { it.value.entryId }) { (index, entry) ->
                 val track = entry.track
+                val isCurrent = isActiveSource && track.id == playerState.mediaId
+                // Reordering a filtered view would move past hidden neighbours, so only offer it unfiltered.
+                val canReorder = !search.isFiltering
                 val actions = buildList {
                     add(MenuAction("Play", Icons.Filled.PlayArrow) { vm.playPlaylist(list.id, list.name, index) })
-                    // Reordering a filtered view would swap with hidden neighbours, so only offer it unfiltered.
-                    if (index > 0 && !search.isFiltering) add(MenuAction("Move up", Icons.Filled.ArrowUpward) { vm.movePlaylistEntry(entries, index, -1) })
-                    if (index < entries.lastIndex && !search.isFiltering) add(MenuAction("Move down", Icons.Filled.ArrowDownward) { vm.movePlaylistEntry(entries, index, 1) })
+                    if (!isCurrent) {
+                        add(MenuAction("Play next", Icons.Filled.QueuePlayNext) {
+                            val moved = if (isActiveSource) movedAfterCurrent(local, index, playerState.mediaId) { it.track.id } else null
+                            if (moved != null) commit(moved) else vm.playNext(track, source)
+                        })
+                    }
+                    if (index > 0 && canReorder) add(MenuAction("Move up", Icons.Filled.ArrowUpward) { commit(local.moved(index, index - 1)) })
+                    if (index < local.lastIndex && canReorder) add(MenuAction("Move down", Icons.Filled.ArrowDownward) { commit(local.moved(index, index + 1)) })
                     add(MenuAction("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) {
                         vm.requestAddToPlaylist(AddRequest.Tracks(listOf(track.id)))
                     })
                     add(MenuAction("Remove from playlist", Icons.Filled.RemoveCircleOutline) { vm.removeFromPlaylist(entry) })
                 }
-                LongPressMenuBox(onClick = { vm.playPlaylist(list.id, list.name, index) }, actions = actions) {
-                    TrackRow(
-                        title = track.title,
-                        subtitle = listOfNotNull(track.artist, track.albumTitle).joinToString(" · "),
-                        durationMs = track.durationMs,
-                        isCurrent = isActiveSource && track.id == playerState.mediaId,
-                        leading = { CoverArt(track.coverPath, Modifier.size(44.dp), cornerRadius = 6.dp, iconSize = 18.dp) },
-                    )
+                ReorderableItem(reorder, key = entry.entryId, enabled = canReorder) { dragging ->
+                    DragSurface(dragging) {
+                        LongPressMenuBox(onClick = { vm.playPlaylist(list.id, list.name, index) }, actions = actions) {
+                            TrackRow(
+                                title = track.title,
+                                subtitle = listOfNotNull(track.artist, track.albumTitle).joinToString(" · "),
+                                durationMs = track.durationMs,
+                                isCurrent = isCurrent,
+                                leading = { CoverArt(track.coverPath, Modifier.size(44.dp), cornerRadius = 6.dp, iconSize = 18.dp) },
+                                trailing = if (canReorder) {
+                                    { DragHandle(Modifier.draggableHandle(onDragStopped = { commit(local) })) }
+                                } else {
+                                    null
+                                },
+                            )
+                        }
+                    }
                 }
             }
-            item { Spacer(Modifier.height(16.dp)) }
+            item(key = "footer") { Spacer(Modifier.height(16.dp)) }
         }
     }
 

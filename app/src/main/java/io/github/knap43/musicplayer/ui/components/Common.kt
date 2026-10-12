@@ -270,6 +270,7 @@ fun TrackRow(
     isCurrent: Boolean,
     leading: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val accent = MaterialTheme.colorScheme.primary
     Row(
@@ -313,6 +314,7 @@ fun TrackRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        trailing?.invoke()
     }
 }
 

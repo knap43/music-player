@@ -155,9 +155,9 @@ abstract class LibraryDao {
         return fresh.size
     }
 
+    /** Renumbers a playlist's entries to follow [entryIds]. */
     @Transaction
-    open suspend fun swapEntries(first: PlaylistTrack, second: PlaylistTrack) {
-        setEntryPosition(first.entryId, second.position)
-        setEntryPosition(second.entryId, first.position)
+    open suspend fun setEntryOrder(entryIds: List<Long>) {
+        entryIds.forEachIndexed { position, id -> setEntryPosition(id, position) }
     }
 }

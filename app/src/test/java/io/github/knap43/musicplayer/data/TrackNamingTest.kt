@@ -16,7 +16,8 @@ class TrackNamingTest {
 
     @Test
     fun numberFromTitleTag() {
-        assertEquals("1 - Man Next Door" to 1, trackTitleAndNumber("1 - Man Next Door", null, "whatever"))
+        assertEquals("Man Next Door" to 1, trackTitleAndNumber("1 - Man Next Door", null, "whatever"))
+        assertEquals("Man Next Door" to 4, trackTitleAndNumber("01. Man Next Door", 4, "whatever"))
     }
 
     @Test

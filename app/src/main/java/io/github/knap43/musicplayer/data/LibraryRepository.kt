@@ -129,7 +129,7 @@ class LibraryRepository(
     suspend fun deletePlaylist(id: Long) = dao.deletePlaylist(id)
     suspend fun addToPlaylist(playlistId: Long, trackIds: List<String>): Int = dao.addToPlaylist(playlistId, trackIds)
     suspend fun removeFromPlaylist(entryId: Long) = dao.deleteEntry(entryId)
-    suspend fun swapPlaylistEntries(first: PlaylistTrack, second: PlaylistTrack) = dao.swapEntries(first, second)
+    suspend fun setPlaylistOrder(entryIds: List<Long>) = dao.setEntryOrder(entryIds)
 
     private companion object {
         const val TAG = "LibraryRepository"

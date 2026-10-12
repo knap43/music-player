@@ -15,9 +15,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -30,7 +32,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,6 +47,8 @@ import io.github.knap43.musicplayer.data.TrackEntity
 import io.github.knap43.musicplayer.ui.AddRequest
 import io.github.knap43.musicplayer.ui.MainViewModel
 import io.github.knap43.musicplayer.ui.components.CoverArt
+import io.github.knap43.musicplayer.ui.components.DragHandle
+import io.github.knap43.musicplayer.ui.components.DragSurface
 import io.github.knap43.musicplayer.ui.components.LongPressMenuBox
 import io.github.knap43.musicplayer.ui.components.MenuAction
 import io.github.knap43.musicplayer.ui.components.NoResults
@@ -50,8 +56,12 @@ import io.github.knap43.musicplayer.ui.components.ScreenScaffold
 import io.github.knap43.musicplayer.ui.components.TrackRow
 import io.github.knap43.musicplayer.ui.components.describeLength
 import io.github.knap43.musicplayer.ui.components.fieldsMatch
+import io.github.knap43.musicplayer.ui.components.moved
+import io.github.knap43.musicplayer.ui.components.movedAfterCurrent
 import io.github.knap43.musicplayer.ui.components.queryTokens
 import io.github.knap43.musicplayer.ui.components.rememberSearchState
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
 fun AlbumScreen(vm: MainViewModel, albumId: String, onBack: () -> Unit) {
@@ -59,10 +69,18 @@ fun AlbumScreen(vm: MainViewModel, albumId: String, onBack: () -> Unit) {
     val tracks by remember(albumId) { vm.albumTracks(albumId) }.collectAsState(initial = emptyList())
     val playerState by vm.playerState.collectAsStateWithLifecycle()
     val search = rememberSearchState()
+    // A custom order lives only while the album is open; closing it drops back to the album's own.
+    var order by remember(albumId) { mutableStateOf<List<String>?>(null) }
+    val ordered = remember(tracks, order) {
+        val ids = order ?: return@remember tracks
+        val byId = tracks.associateBy { it.id }
+        val known = ids.toHashSet()
+        ids.mapNotNull(byId::get) + tracks.filter { it.id !in known }
+    }
 
     // Indices always refer to the full track list, so playback covers the whole album.
-    val visible = remember(tracks, search.isFiltering, search.query) {
-        val indexed = tracks.withIndex().toList()
+    val visible = remember(ordered, search.isFiltering, search.query) {
+        val indexed = ordered.withIndex().toList()
         if (!search.isFiltering) {
             indexed
         } else {
@@ -83,17 +101,33 @@ fun AlbumScreen(vm: MainViewModel, albumId: String, onBack: () -> Unit) {
         },
     ) { padding ->
         val current = album ?: return@ScreenScaffold
+        val source = vm.albumSource(current)
+        val isActiveSource = playerState.source?.let { it.kind == source.kind && it.id == source.id } == true
+        fun commit(tracksInOrder: List<TrackEntity>) {
+            val ids = tracksInOrder.map { it.id }
+            order = ids
+            vm.followOrder(source, ids)
+        }
+        val listState = rememberLazyListState()
+        val reorder = rememberReorderableLazyListState(listState) { from, to ->
+            // Read the state, not `ordered`: several moves can land before the next recomposition.
+            val ids = order ?: tracks.map { it.id }
+            val f = ids.indexOf(from.key)
+            val t = ids.indexOf(to.key)
+            if (f >= 0 && t >= 0) order = ids.moved(f, t)
+        }
         LazyColumn(
             Modifier
                 .padding(padding)
                 .fillMaxSize(),
+            state = listState,
         ) {
             if (!search.isFiltering) {
-                item {
+                item(key = "header") {
                     AlbumHeader(
                         current,
                         shuffle = playerState.shuffle,
-                        onPlay = { vm.playAlbum(current) },
+                        onPlay = { if (order == null) vm.playAlbum(current) else vm.playAlbumTracks(current, ordered) },
                         onShuffleChange = vm::setShuffle,
                     )
                 }
@@ -101,32 +135,47 @@ fun AlbumScreen(vm: MainViewModel, albumId: String, onBack: () -> Unit) {
                 item { NoResults(search.query) }
             }
             items(visible, key = { it.value.id }) { (index, track) ->
-                LongPressMenuBox(
-                    onClick = { vm.playAlbumTracks(current, tracks, index) },
-                    actions = listOf(
-                        MenuAction("Play", Icons.Filled.PlayArrow) { vm.playAlbumTracks(current, tracks, index) },
-                        MenuAction("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) {
-                            vm.requestAddToPlaylist(AddRequest.Tracks(listOf(track.id)))
-                        },
-                    ),
-                ) {
-                    TrackRow(
-                        title = track.title,
-                        subtitle = trackSubtitle(track, current),
-                        durationMs = track.durationMs,
-                        isCurrent = track.id == playerState.mediaId,
-                        leading = {
-                            Text(
-                                track.trackNumber?.toString() ?: "•",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
+                val isCurrent = track.id == playerState.mediaId
+                val canReorder = !search.isFiltering
+                val actions = buildList {
+                    add(MenuAction("Play", Icons.Filled.PlayArrow) { vm.playAlbumTracks(current, ordered, index) })
+                    if (!isCurrent) {
+                        add(MenuAction("Play next", Icons.Filled.QueuePlayNext) {
+                            val moved = if (isActiveSource) movedAfterCurrent(ordered, index, playerState.mediaId) { it.id } else null
+                            if (moved != null) commit(moved) else vm.playNext(track, source)
+                        })
+                    }
+                    add(MenuAction("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) {
+                        vm.requestAddToPlaylist(AddRequest.Tracks(listOf(track.id)))
+                    })
+                }
+                ReorderableItem(reorder, key = track.id, enabled = canReorder) { dragging ->
+                    DragSurface(dragging) {
+                        LongPressMenuBox(onClick = { vm.playAlbumTracks(current, ordered, index) }, actions = actions) {
+                            TrackRow(
+                                title = track.title,
+                                subtitle = trackSubtitle(track, current),
+                                durationMs = track.durationMs,
+                                isCurrent = isCurrent,
+                                leading = {
+                                    Text(
+                                        track.trackNumber?.toString() ?: "•",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                },
+                                trailing = if (canReorder) {
+                                    { DragHandle(Modifier.draggableHandle(onDragStopped = { order?.let { vm.followOrder(source, it) } })) }
+                                } else {
+                                    null
+                                },
                             )
-                        },
-                    )
+                        }
+                    }
                 }
             }
-            item { Spacer(Modifier.height(16.dp)) }
+            item(key = "footer") { Spacer(Modifier.height(16.dp)) }
         }
     }
 }
