@@ -278,7 +278,7 @@ class PlayerWidget : AppWidgetProvider() {
         }
 
         /** Decodes [path], centre-crops it to a [size]-pixel square and rounds the corners. */
-        private fun decodeRounded(path: String, size: Int): Bitmap? {
+        internal fun decodeRounded(path: String, size: Int): Bitmap? {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(path, bounds)
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null

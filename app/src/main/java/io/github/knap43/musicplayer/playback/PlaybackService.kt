@@ -9,13 +9,11 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import io.github.knap43.musicplayer.MusicApp
-import io.github.knap43.musicplayer.R
 import io.github.knap43.musicplayer.ui.MainActivity
 import io.github.knap43.musicplayer.widget.PlayerWidget
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +32,7 @@ class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var positionSaver: Job? = null
+    private var notificationProvider: NowPlayingNotification? = null
 
     /** False until the saved queue has been read back; until then an empty player means nothing. */
     private var restored = false
@@ -67,9 +66,7 @@ class PlaybackService : MediaSessionService() {
             .setCallback(SessionCallback())
             .setSessionActivity(openPlayer)
             .build()
-        setMediaNotificationProvider(
-            DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_notification) },
-        )
+        setMediaNotificationProvider(NowPlayingNotification(this).also { notificationProvider = it })
         restoreQueue(player)
     }
 
@@ -95,6 +92,7 @@ class PlaybackService : MediaSessionService() {
             it.release()
         }
         session = null
+        notificationProvider?.release()
         scope.cancel()
         super.onDestroy()
     }
